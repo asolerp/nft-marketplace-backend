@@ -7,11 +7,11 @@ export default function OnTransfer(
 ) {
   const handleOnTransfer = async (transaction: any) => {
     await createTransactionUseCase.execute(uuidv4(), {
-      from: transaction.from,
-      to: transaction.to,
+      from: transaction.nftAddress,
+      to: transaction.buyer,
       date: new Date(),
       tokenId: transaction.tokenId,
-      value: transaction?.value || 0,
+      value: transaction?.price || 0,
     })
   }
 

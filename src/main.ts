@@ -23,14 +23,16 @@ import VerifyImageRouter from './presentation/routers/verify-image-router'
 import VerifyRouter from './presentation/routers/verify-router'
 import WebhookRouter from './presentation/routers/webhook'
 import server from './server'
-import ContractABI from './data/data-sources/blockchain/NftMarketABI.json'
+import CCNftABI from './data/data-sources/blockchain/Contracts/CCNftABI.json'
+import NftVendorABI from './data/data-sources/blockchain/Contracts/NftVendorABI.json'
+import NftOffersABI from './data/data-sources/blockchain/Contracts/NftOffersABI.json'
+import NftFractionsFactoryABI from './data/data-sources/blockchain/Contracts/NftFractionsFactoryABI.json'
+import NftFractionsVendorABI from './data/data-sources/blockchain/Contracts/NftFractionsVendorABI.json'
 import { Web3Events } from './data/data-sources/blockchain/Web3Events'
 import OnTransfer from './presentation/subscriptions/on-transfer'
 import SignatureRouter from './presentation/routers/signature'
 import GetNftsRouter from './presentation/routers/get-nfts'
 import { GetNFTs } from './domain/use-cases/nft/get-nfts'
-import OnMint from './presentation/subscriptions/on-mint'
-import { CreateNFT } from './domain/use-cases/nft/create-nft'
 import { MongoDBNFTDataSource } from './data/data-sources/mongodb/MongoDBNFTDataSource'
 import UserRouter from './presentation/routers/user-router'
 import { GetUser } from './domain/use-cases/user/get-user'
@@ -43,6 +45,16 @@ import { MongoDBRefreshTokensDataSource } from './data/data-sources/mongodb/Mong
 import { AddRefreshTokens } from './domain/use-cases/user/add-refresh-token'
 import { DeleteTokens } from './domain/use-cases/user/delete-tokens'
 import { UpdatePaymentStatus } from './domain/use-cases/payments/update-payment-status'
+import { GetCaskInfo } from './domain/use-cases/nft/get-cask-info'
+import { FractionalizeNft } from './domain/use-cases/nft/fractionalize-nft'
+import OnOffer from './presentation/subscriptions/on-offer'
+import { RecordOffer } from './domain/use-cases/offer/record-offer'
+import { OfferImpl } from './domain/repositories/offer-repository'
+import { MongoDBOfferDataSource } from './data/data-sources/mongodb/MongoDBOfferDataSource'
+import { GetOwnedNFTs } from './domain/use-cases/nft/get-owned-nfts'
+import OffersRouter from './presentation/routers/offers-router'
+import { GetOffers } from './domain/use-cases/offer/get-offers'
+import { RecordOfferImpl } from './domain/repositories/record-offer-repository'
 ;(async () => {
   const clientDB = MongoClientFactory.createClient(
     process.env.CONTEXT_NAME as string,
@@ -56,15 +68,38 @@ import { UpdatePaymentStatus } from './domain/use-cases/payments/update-payment-
       process.env.CONTEXT_NAME as string,
       process.env.BLOCKCHAIN_URL as string,
       process.env.BLOCKCHAIN_WS_URL as string,
-      {
-        contractAddress: process.env.NFT_CONTRACT_ADDRESS as string,
-        contractABI: ContractABI,
-      }
+      [
+        {
+          contractName: 'CCNft',
+          contractAddress: process.env.NFT_CONTRACT_ADDRESS as string,
+          contractABI: CCNftABI,
+        },
+        {
+          contractName: 'NftVendor',
+          contractAddress: process.env.NFT_VENDOR_ADDRESS as string,
+          contractABI: NftVendorABI,
+        },
+        {
+          contractName: 'NftOffers',
+          contractAddress: process.env.NFT_OFFERS_ADDRESS as string,
+          contractABI: NftOffersABI,
+        },
+        {
+          contractName: 'NftFractionsFactory',
+          contractAddress: process.env.NFT_FRACTION_FACTORY_ADDRES as string,
+          contractABI: NftFractionsFactoryABI,
+        },
+        {
+          contractName: 'NftFractionsVendor',
+          contractAddress: process.env.NFT_FRACTION_VENDOR as string,
+          contractABI: NftFractionsVendorABI,
+        },
+      ]
     )
 
-  const web3Contract = Web3ClientFactory.getContract()
+  const web3Contracts = Web3ClientFactory.getContracts()
 
-  const eventsHandler = new Web3Events(web3Client, web3WsClient, web3Contract)
+  const eventsHandler = new Web3Events(web3Client, web3WsClient, web3Contracts)
 
   const payments = stripeConnection()
 
@@ -87,7 +122,6 @@ import { UpdatePaymentStatus } from './domain/use-cases/payments/update-payment-
       )
     )
   )
-
   const verifyMiddleWare = VerifyRouter()
   const verifyImageMiddleWare = VerifyImageRouter()
   const signature = SignatureRouter()
@@ -99,21 +133,41 @@ import { UpdatePaymentStatus } from './domain/use-cases/payments/update-payment-
       )
     )
   )
-
   const createCheckoutSession = CreateCheckoutSessionRouter(
     new CreateCheckoutSession(new PaymentsRepositoryImpl(payments)),
     new RecordInitPayment(
       new RecordPaymentsImpl(new MongoDBRecordPaymentsDataSource(clientDB))
     )
   )
-
   const getNFTs = GetNftsRouter(
     new GetNFTs(
       new NFTRepositoryImpl(
-        new Web3Transaction(web3Client, web3WsClient, web3Contract),
+        new Web3Transaction(web3Client, web3WsClient, web3Contracts),
+        new MongoDBNFTDataSource(clientDB)
+      )
+    ),
+    new GetCaskInfo(
+      new NFTRepositoryImpl(
+        new Web3Transaction(web3Client, web3WsClient, web3Contracts),
+        new MongoDBNFTDataSource(clientDB)
+      )
+    ),
+    new GetOwnedNFTs(
+      new NFTRepositoryImpl(
+        new Web3Transaction(web3Client, web3WsClient, web3Contracts),
+        new MongoDBNFTDataSource(clientDB)
+      )
+    ),
+    new FractionalizeNft(
+      new NFTRepositoryImpl(
+        new Web3Transaction(web3Client, web3WsClient, web3Contracts),
         new MongoDBNFTDataSource(clientDB)
       )
     )
+  )
+
+  const offers = OffersRouter(
+    new GetOffers(new OfferImpl(new MongoDBOfferDataSource(clientDB)))
   )
 
   const webhook = WebhookRouter(
@@ -122,7 +176,7 @@ import { UpdatePaymentStatus } from './domain/use-cases/payments/update-payment-
     ),
     new SendBougthNFT(
       new NFTRepositoryImpl(
-        new Web3Transaction(web3Client, web3WsClient, web3Contract),
+        new Web3Transaction(web3Client, web3WsClient, web3Contracts),
         new MongoDBNFTDataSource(clientDB)
       )
     ),
@@ -139,28 +193,27 @@ import { UpdatePaymentStatus } from './domain/use-cases/payments/update-payment-
     )
   )
 
-  const handleOnMint = OnMint(
-    new CreateNFT(
-      new NFTRepositoryImpl(
-        new Web3Transaction(web3Client, web3WsClient, web3Contract),
-        new MongoDBNFTDataSource(clientDB)
-      )
-    )
+  const handleOnNewOffer = OnOffer(
+    new RecordOffer(new RecordOfferImpl(new MongoDBOfferDataSource(clientDB)))
   )
 
-  eventsHandler.subscribeLogEvent('Sale', handleOnTransfer)
-  eventsHandler.subscribeLogEvent('Transfer', handleOnTransfer)
-  eventsHandler.subscribeLogEvent('Mint', handleOnMint)
+  eventsHandler.subscribeLogEvent('CCNft', 'Mint')
+  eventsHandler.subscribeLogEvent('CCNft', 'Approval')
 
-  server.use('/user', user)
-  server.use('/signature', signature)
-  server.use('/verify', verifyMiddleWare)
-  server.use('/verify-image', verifyImageMiddleWare)
-  server.use('/order-bottle', orderBottleMiddleWare)
-  server.use('/get-transactions', transactionsHistory)
-  server.use('/create-checkout-session', createCheckoutSession)
-  server.use('/nfts', getNFTs)
-  server.use('/webhook', webhook)
+  eventsHandler.subscribeLogEvent('NftVendor', 'ItemBought', handleOnTransfer)
+
+  eventsHandler.subscribeLogEvent('NftOffers', 'NewOffer', handleOnNewOffer)
+
+  server.use('/api/user', user)
+  server.use('/api/signature', signature)
+  server.use('/api/verify', verifyMiddleWare)
+  server.use('/api/verify-image', verifyImageMiddleWare)
+  server.use('/api/order-bottle', orderBottleMiddleWare)
+  server.use('/api/get-transactions', transactionsHistory)
+  server.use('/api/create-checkout-session', createCheckoutSession)
+  server.use('/api/casks', getNFTs)
+  server.use('/api/webhook', webhook)
+  server.use('/api/offer', offers)
 
   server.listen(4000, () => console.log('Running on http://localhost:4000'))
 })()

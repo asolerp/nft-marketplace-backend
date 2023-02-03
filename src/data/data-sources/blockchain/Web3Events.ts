@@ -1,37 +1,52 @@
 import { Web3Repository } from './Web3Repository'
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+import * as _ from 'lodash'
 
 export class Web3Events extends Web3Repository {
   public subscribedEvents: any = {}
 
-  public subscribeLogEvent(eventName: string, callback: any) {
-    const eventJsonInterface = this.contract()._jsonInterface.find(
-      (o: any) => o.name === eventName && o.type === 'event'
+  public subscribeLogEvent(
+    contractName: string,
+    eventName: string,
+    callback?: any
+  ) {
+    const contracts = this.contracts()
+
+    if (!contracts?.[contractName]) {
+      return
+    }
+
+    const contract = contracts[contractName]
+
+    const eventJsonInterface = _.find(
+      contract._jsonInterface,
+      (o) => o.name === eventName && o.type === 'event'
     )
 
-    const subscription = this.wsClient().eth.subscribe(
-      'logs',
-      {
-        address: this.contract().options.address,
-        topics: [eventJsonInterface.signature],
-      },
-      (error: any, result: any) => {
-        if (!error) {
-          const eventObj = this.client().eth.abi.decodeLog(
-            eventJsonInterface.inputs,
-            result.data,
-            result.topics.slice(1)
-          )
-          callback(eventObj)
-        }
-      }
-    )
+    const options = {
+      address: contracts[contractName].options.address,
+      topics: [eventJsonInterface?.signature],
+    }
+
+    const subscription = this.wsClient()
+      .eth.subscribe('logs', options, (error) => {
+        if (!error) console.log('got result')
+        else console.log(error)
+      })
+      .on('data', (log) => {
+        const event = this.client().eth.abi.decodeLog(
+          eventJsonInterface?.inputs,
+          log.data,
+          log.topics.slice(1)
+        )
+        console.log('EVENTO', event)
+        callback && callback(event)
+      })
 
     this.subscribedEvents[eventName] = subscription
 
     console.log(
-      `Subscribed to event '${eventName}' of contract '${
-        this.contract().options.address
-      }' `
+      `Subscribed to event '${eventName}' of contract '${contracts[contractName].options.address}' `
     )
   }
 

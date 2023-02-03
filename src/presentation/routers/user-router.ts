@@ -7,10 +7,10 @@ import { generateNonce } from '../utils/generateNonce'
 import jwt from 'jsonwebtoken'
 import { v4 as uuidv4 } from 'uuid'
 import { ethers } from 'ethers'
-import { GetRefreshTokensUseCase } from '../../domain/interfaces/use-cases/get-refresh-tokens'
+import { GetRefreshTokensUseCase } from '../../domain/interfaces/use-cases/auth/get-refresh-tokens'
 import { CreateRefreshTokensUseCase } from '../../domain/interfaces/use-cases/create-refresh-token'
 import { authenticateToken } from '../middlewares/authenticateToken'
-import { DeleteTokensUseCase } from '../../domain/interfaces/use-cases/delete-tokens'
+import { DeleteTokensUseCase } from '../../domain/interfaces/use-cases/auth/delete-tokens'
 
 export default function UserRouter(
   getUser: GetUserUseCase,
@@ -44,8 +44,6 @@ export default function UserRouter(
     if (refreshToken == null) return res.sendStatus(401)
 
     const refreshTokenDB = await getRefreshTokens.execute(refreshToken)
-
-    console.log('REFRESH TOKEN', refreshTokenDB)
 
     if (!refreshTokenDB) return res.sendStatus(403)
 

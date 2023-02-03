@@ -1,5 +1,5 @@
 import { RefreshTokensRepository } from '../../interfaces/repository/refresh-tokens.repository'
-import { AddRefreshTokensUseCase } from '../../interfaces/use-cases/add-refresh-token'
+import { AddRefreshTokensUseCase } from '../../interfaces/use-cases/auth/add-refresh-token'
 import { RefreshTokensRequestModel } from '../../model/RefreshTokens'
 
 export class AddRefreshTokens implements AddRefreshTokensUseCase {
